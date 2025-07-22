@@ -1,28 +1,20 @@
-/**
-* MIT License
-*
-* Copyright (c) 2025 Mika Suominen
-*
-* Permission is hereby granted, free of charge, to any person obtaining a copy
-* of this software and associated documentation files (the "Software"), to deal
-* in the Software without restriction, including without limitation the rights
-* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-* copies of the Software, and to permit persons to whom the Software is
-* furnished to do so, subject to the following conditions:
-*
-* The above copyright notice and this permission notice shall be included in all
-* copies or substantial portions of the Software.
-*
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-* SOFTWARE.
-*/
 
-import * as utils from "./utils.mjs";
+
+class Deferred {
+  constructor() {
+    this.status = "pending";
+    this.promise = new Promise((resolve, reject) => {
+      this.resolve = (value) => {
+        this.status = "resolved";
+        resolve(value);
+      };
+      this.reject = (reason) => {
+        this.status = "rejected";
+        reject(reason);
+      };
+    });
+  }
+}
 
 class HeadTTS {
 
@@ -61,6 +53,7 @@ class HeadTTS {
 
       trace: 0
     }, settings || {});
+
 
     // Client setup
     this.ttsSetup = {
@@ -107,6 +100,60 @@ class HeadTTS {
     this.ww = null; // Web Worker for in-browser inference
     this.rest = null; // RESTful server
   }
+ trace( ...outputs ) {
+  const s = "HeadTTS [" + new Date().toISOString().slice(11, 23) + "] ";
+  console.log(s,...outputs);
+}
+ isModuleWebWorkers() {
+  let support = false;
+  try {
+    const tester = {
+      get type() { support = true; }
+    }
+    const worker = new Worker('blob://', tester);
+  } finally {
+    return support;
+  }
+}
+ traceMask = {
+  connection: 1,
+  messages: 2,
+  events: 4,
+  g2p: 8,
+  language: 16
+};
+
+ b64ToArrayBuffer(chunk) {
+
+  // Calculate the needed total buffer length
+  let bufLen = 3 * chunk.length / 4;
+  if (chunk[chunk.length - 1] === '=') {
+    bufLen--;
+    if (chunk[chunk.length - 2] === '=') {
+      bufLen--;
+    }
+  }
+
+  // Create the ArrayBuffer
+  const arrBuf = new ArrayBuffer(bufLen);
+  const arr = new Uint8Array(arrBuf);
+  let i, p = 0, c1, c2, c3, c4;
+
+  // Populate the buffer
+  for (i = 0; i < chunk.length; i += 4) {
+    c1 = b64Lookup[chunk.charCodeAt(i)];
+    c2 = b64Lookup[chunk.charCodeAt(i+1)];
+    c3 = b64Lookup[chunk.charCodeAt(i+2)];
+    c4 = b64Lookup[chunk.charCodeAt(i+3)];
+    arr[p++] = (c1 << 2) | (c2 >> 4);
+    arr[p++] = ((c2 & 15) << 4) | (c3 >> 2);
+    arr[p++] = ((c3 & 3) << 6) | (c4 & 63);
+  }
+
+  return arrBuf;
+}
+
+
 
   /**
   * Divide the given text into parts
@@ -161,9 +208,9 @@ class HeadTTS {
   * @param {boolean} [firstOnly=true] If true, only the first handler is called.
   */
   emit( title, message, handlers, isThrowable = false, firstOnly = true ) {
-    const isTraceEvents = this.settings.trace & utils.traceMask.events;
+    const isTraceEvents = this.settings.trace & this.traceMask.events;
     if ( isTraceEvents ) {
-      utils.trace( "EMIT: " + title, message );
+      this.trace( "EMIT: " + title, message );
     }
     let isCalled = false;
     for(let i=0; i<handlers.length; i++) {
@@ -192,8 +239,8 @@ class HeadTTS {
   * @param {function} [onprogress=null] Callback for ProgressEvent events
   */
   async connect( settings = null, onprogress = null, onerror = null ) {
-    const isTraceConnection = this.settings.trace & utils.traceMask.connect;
-    const isTraceMessages = this.settings.trace & utils.traceMask.messages;
+    const isTraceConnection = this.settings.trace & this.traceMask.connect;
+    const isTraceMessages = this.settings.trace & this.traceMask.messages;
 
     // If new settings, force re-connect
     if ( settings === null ) {
@@ -207,21 +254,21 @@ class HeadTTS {
     this.isConnected = false;
     if ( this.ws ) {
       if ( isTraceConnection ) {
-        utils.trace( "DISCONNECT: WebSocket" );
+        this.trace( "DISCONNECT: WebSocket" );
       }
       this.ws.close();
       this.ws = null;
     }
     if ( this.ww ) {
       if ( isTraceConnection ) {
-        utils.trace( "DISCONNECT: Worker" );
+        this.trace( "DISCONNECT: Worker" );
       }
       this.ww.terminate();
       this.ww = null;
     }
     if ( this.rest ) {
       if ( isTraceConnection ) {
-        utils.trace( "DISCONNECT: REST" );
+        this.trace( "DISCONNECT: REST" );
       }
       this.rest = null;
     }
@@ -237,18 +284,18 @@ class HeadTTS {
       if ( endpointLowerCase === "webgpu" || endpointLowerCase === "wasm" ) {
 
         // Check support for Module Web Workers
-        if ( !utils.isModuleWebWorkers() ) {
+        if ( !this.isModuleWebWorkers() ) {
           if ( isTraceConnection ) {
-            utils.trace( "Your browser doesn't support Module Web Workers." );
+            this.trace( "Your browser doesn't support Module Web Workers." );
           }
           connectionErrorLog.push( "Your browser doesn't support Module Web Workers." );
           continue;
         }
 
         // Check support for WbeGPU, if needed
-        if ( endpointLowerCase === "webgpu" && !utils.isWebGPU() ) {
+        if ( endpointLowerCase === "webgpu" && !this.isWebGPU() ) {
           if ( isTraceConnection ) {
-            utils.trace( "Your browser doesn't support WebGPU." );
+            this.trace( "Your browser doesn't support WebGPU." );
           }
           connectionErrorLog.push( "Your browser doesn't support WebGPU." );
           continue;
@@ -307,7 +354,7 @@ class HeadTTS {
             endpointSetup.dtype = (endpointLowerCase === "webgpu") ? this.settings.dtypeWebgpu : this.settings.dtypeWasm;
             const message = { type: "connect", data: endpointSetup };
             if ( isTraceMessages ) {
-              utils.trace( "OUT: HeadTTS -> worker, message=", message );
+              this.trace( "OUT: HeadTTS -> worker, message=", message );
             }
             this.ww.postMessage( message );
 
@@ -315,7 +362,7 @@ class HeadTTS {
 
           this.ww.onmessage = (ev) => {
             if ( isTraceMessages ) {
-              utils.trace( "IN: worker -> HeadTTS, message=", ev.data);
+              this.trace( "IN: worker -> HeadTTS, message=", ev.data);
             }
             this.processData(ev.data);
           }
@@ -342,7 +389,7 @@ class HeadTTS {
             this.ww = null;
           }
           if ( isTraceConnection ) {
-            utils.trace( "Failed to start Module Web Worker." );
+            this.trace( "Failed to start Module Web Worker." );
           }
           connectionErrorLog.push( "Failed to start Module Web Worker." );
         }
@@ -390,7 +437,7 @@ class HeadTTS {
             // Message handler
             this.ws.onmessage = async (ev) => {
               if ( isTraceMessages ) {
-                utils.trace( "IN: WebSocket -> HeadTTS, message=", ev.data);
+                this.trace( "IN: WebSocket -> HeadTTS, message=", ev.data);
               }
               this.processData(ev.data);
             }
@@ -410,7 +457,7 @@ class HeadTTS {
 
               if ( ev.wasClean) {
                 if ( isTraceConnection ) {
-                  utils.trace( "WebSocket connection closed cleanly, event=", ev);
+                  this.trace( "WebSocket connection closed cleanly, event=", ev);
                 }
               } else {
                 console.error("HeadTTS: WebSocket connection was closed, event=", ev);
@@ -427,7 +474,7 @@ class HeadTTS {
               this.ws = null;
             }
             if ( isTraceConnection ) {
-              utils.trace('Failed to connect to "' + endpoint + "'." );
+              this.trace('Failed to connect to "' + endpoint + "'." );
             }
             connectionErrorLog.push( 'Failed to connect to "' + endpoint + "'." );
           }
@@ -458,7 +505,7 @@ class HeadTTS {
           } catch(error) {
             console.log(error);
             if ( isTraceMessages ) {
-              utils.trace( 'The request hello failed on "' + endpoint + '".' );
+              this.trace( 'The request hello failed on "' + endpoint + '".' );
             }
             connectionErrorLog.push( 'The request hello failed on "' + endpoint + '".' );
           }
@@ -531,9 +578,9 @@ class HeadTTS {
   * @param {function} [onerror=null] Callback for Error events overriding event handler
   */
   async setup( data, onerror=null ) {
-    const isTraceMessages = this.settings.trace & utils.traceMask.messages;
+    const isTraceMessages = this.settings.trace & this.traceMask.messages;
     if ( isTraceMessages ) {
-      utils.trace( "SETUP: APP -> HeadTTS, data=",data);
+      this.trace( "SETUP: APP -> HeadTTS, data=",data);
     }
 
     // Check data item
@@ -575,7 +622,7 @@ class HeadTTS {
       onmessage: null,
       onerror: onerror,
       started: performance.now(),
-      deferred: new utils.Deferred()
+      deferred: new Deferred()
     };
     this.queueIn.push(item);
 
@@ -597,7 +644,7 @@ class HeadTTS {
   */
   async synthesize(data, onmessage=null, onerror=null) {
     if ( this.settings.traceLevel ) {
-      utils.trace( this.settings.traceLevel, 3, "SYNTHESIZE: APP -> HeadTTS, data=",data);
+      this.trace( this.settings.traceLevel, 3, "SYNTHESIZE: APP -> HeadTTS, data=",data);
     }
 
     // Check data item
@@ -732,7 +779,7 @@ class HeadTTS {
         onmessage: onmessage,
         onerror: onerror,
         started: performance.now(),
-        deferred: new utils.Deferred(),
+        deferred: new Deferred(),
         metadata: {
           part: i,
           partsTotal: messages.length
@@ -756,7 +803,8 @@ class HeadTTS {
   * @param {function} [onerror=null] Callback for Error events overriding event handler.
   */
   async processIn( onerror=null ) {
-    const isTraceMessages = this.settings.trace & utils.traceMask.messages;
+  
+    const isTraceMessages = this.settings.trace & this.traceMask.messages;
     if ( this.isProcessingIn ) return; // Already processing
     if ( this.isConnecting ) return; // Still connecting
     if ( !this.isConnected ) { // Not connected
@@ -775,7 +823,7 @@ class HeadTTS {
         Object.assign( this.ttsSetup, item.message.data );
         if ( this.ws ) {
           if ( isTraceMessages ) {
-            utils.trace( "OUT: HeadTTS -> WebSocket, message=", item.message);
+            this.trace( "OUT: HeadTTS -> WebSocket, message=", item.message);
           }
           this.ws.send( JSON.stringify( item.message) );
         }
@@ -796,27 +844,31 @@ class HeadTTS {
         // Send item
         if ( this.ws ) {
           if ( isTraceMessages ) {
-            utils.trace( "OUT: HeadTTS -> WebSocket, message=", item.message);
+            this.trace( "OUT: HeadTTS -> WebSocket, message=", item.message);
           }
           this.ws.send( JSON.stringify( item.message) );
         } else if ( this.ww ) {
           if ( isTraceMessages ) {
-            utils.trace( "OUT: HeadTTS -> worker, message=", item.message);
+            this.trace( "OUT: HeadTTS -> worker, message=", item.message);
           }
 
           // Set default values
           if ( item.message.type === "synthesize" ) {
+            console.log("hii")
             item.message.data.voice = this.ttsSetup.voice.slice();
             item.message.data.language = this.ttsSetup.language.slice();
             item.message.data.speed = this.ttsSetup.speed;
             item.message.data.audioEncoding = this.ttsSetup.audioEncoding.slice();
           }
+          console.log("item.message",item.message)
 
           this.ww.postMessage( item.message );
         } else if ( this.rest ) {
 
           if ( item.message.type === "synthesize" ) {
 
+
+          
             const url = new URL(this.rest);
             url.pathname += (url.pathname.endsWith("/") ? "" : "/") + "synthesize";
 
@@ -829,7 +881,7 @@ class HeadTTS {
             };
 
             if ( isTraceMessages ) {
-              utils.trace( "OUT: HeadTTS -> REST, message=", item.message.data);
+              this.trace( "OUT: HeadTTS -> REST, message=", item.message.data);
             }
 
             fetch(url, request)
@@ -910,7 +962,7 @@ class HeadTTS {
               const itemdata = item.message.data;
               if ( itemdata.audio ) {
                 if ( typeof itemdata.audio === "string" ) {
-                  itemdata.audio = utils.b64ToArrayBuffer(itemdata.audio);
+                  itemdata.audio = this.b64ToArrayBuffer(itemdata.audio);
                 }
                 if ( itemdata.audioEncoding === "wav" ) {
                   itemdata.audio = await this.settings.audioCtx.decodeAudioData( itemdata.audio );

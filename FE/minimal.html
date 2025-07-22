@@ -25,7 +25,7 @@
   <script type="module">
     import { TalkingHead } from "talkinghead";
     import { HeadTTS } from "./headtts.mjs";
-
+   
 const headtts = new HeadTTS({
   endpoints: ["ws://127.0.0.1:8882", "webgpu"], // Endpoints in order of priority
   languages: ['en-us'], // Language modules to pre-load (in-browser)
@@ -37,9 +37,7 @@ const headtts = new HeadTTS({
 
     document.addEventListener('DOMContentLoaded', async function(e) {
 
-  // Instantiate the class
-      // NOTE: Never put your API key in a client-side code unless you know
-      //       that you are the only one to have access to that code!
+
       const nodeAvatar = document.getElementById('avatar');
       head = new TalkingHead( nodeAvatar, {
         ttsEndpoint: "https://eu-texttospeech.googleapis.com/v1beta1/text:synthesize",
@@ -48,7 +46,7 @@ const headtts = new HeadTTS({
         cameraView: "upper"
       });
 
-      // Load and show the avatar
+   
       const nodeLoading = document.getElementById('loading');
       try {
         nodeLoading.textContent = "Loading...";
@@ -67,12 +65,32 @@ const headtts = new HeadTTS({
           }
         });
         nodeLoading.style.display = 'none';
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = 0;
+        overlay.style.left = 0;
+        overlay.style.width = '100vw';
+        overlay.style.height = '100vh';
+        overlay.style.background = 'rgba(0,0,0,0.7)';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = 1000;
+        overlay.innerHTML = '<button style="font-size:2em;padding:1em 2em;">Lets start</button>';
+        document.body.appendChild(overlay);
+        overlay.querySelector('button').addEventListener('click', async function() {
+          if (head && head.audioCtx && head.audioCtx.state === "suspended") {
+            await head.audioCtx.resume();
+          }
+          headtts.synthesize({ input: "Hello! Welcome to the Talking Head demo." });
+          overlay.remove();
+        });
+        // --- End user gesture logic ---
       } catch (error) {
         console.log(error);
         nodeLoading.textContent = error.toString();
       }
 
-      // Speak when clicked
       const nodeSpeak = document.getElementById('speak');
       nodeSpeak.addEventListener('click', function () {
         try {
